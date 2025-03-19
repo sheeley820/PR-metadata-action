@@ -1,0 +1,16 @@
+{
+  "name": "pr-metadata-action",
+  "version": "1.0.0",
+  "description": "Adds pull request commentary as a comment to a newly opened PR",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0"
+  }
+}
