@@ -17,3 +17,4 @@ jobs:
           repo: ${{ github.event.repository.name }}
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          pr_number: ${{ github.event.number }}
