@@ -5,14 +5,14 @@ on:
     types: [opened, reopened, synchronize]
 
 jobs:
-
   annotate-pr:
     runs-on: ubuntu-latest
     name: Annotates pull request with metadata
     steps:
       - name: Annotate PR
-        uses: sheeley820/PR-metadata-action@main
+        uses: ./
         with:
+          path: "action"
           owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           ref: ${{ github.head_ref }}

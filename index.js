@@ -8,6 +8,14 @@ const main = async () => {
     const token = core.getInput('token', { required: true });
     const ref = core.getInput('ref', { required: true });
 
+    const pullRequestNumber = parseInt(pr_number, 10);
+
+    console.log("owner", owner);
+    console.log("repo", repo);
+    console.log("pr_number", pr_number);
+    console.log("token", token);
+    console.log("ref", ref);
+
     /**
      * Now we need to create an instance of Octokit which will use to call
      * GitHub's REST API endpoints.
@@ -16,78 +24,31 @@ const main = async () => {
      * You can find all the information about how to use Octokit here:
      * https://octokit.github.io/rest.js/v18
      **/
+    // console.log("octokit", octokit);
+
     const octokit = new github.getOctokit(token);
     // Get the list of tags sorted by date
+    // const branches = await octokit.paginate(octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
+    // console.log("branches", branches);
+    let prCommitShas = [];
+    let tagsForPullRequest = [];
 
-    const branches = await this.octokit.paginate(this.octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
-    console.log("branches", branches);
-    // const { data: tags } = await octokit.repos.listTags({ owner, repo });
-    // console.log("data", data);
-    // let commits = [];
-    // let currentTag;
-    // let previousTag;
-    //
-    // if (tags.length < 2) {
-    //     console.log("Not enough tags to compare.");
-    //     commits = this.getCommits(owner, repo, ref);
-    //     currentTag = tags[0].name;
-    //     previousTag = commits[0].name;
-    // } else {
-    //     currentTag = tags[0].name;
-    //     previousTag = tags[1].name;
-    // }
-    //
-    // console.log(`Comparing commits between ${previousTag} and ${currentTag}`);
-    //
-    // // Get the commits between the two tags
-    // const { data: comparison } = await octokit.repos.compareCommits({
-    //     owner,
-    //     repo,
-    //     base: previousTag,
-    //     head: currentTag
-    // });
-    // console.log("commits", commits);
-    //
-    // console.log("Commits:", comparison.commits.map(commit => commit.commit.message));
+    try {
+        const { data: tags } = await octokit.rest.repos.listTags({ owner, repo });
+        const { data: commits} = await octokit.rest.pulls.listCommits({ owner, repo, pull_number: pullRequestNumber });
+        console.log("tags", tags);
+        console.log("commits", commits);
+
+        prCommitShas = commits?.map((commit) => commit.sha);
+        tagsForPullRequest = tags.filter((tag) =>
+            prCommitShas.includes(tag.commit.sha)
+        );
+    } catch (e) {
+        console.error('Error fetching tags for pull request:', e.message);
+        throw e;
+    }
+
+    console.log('Tags associated with the pull request:', tagsForPullRequest);
 }
 
-async function getBranches(owner, repo) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const branches = await this.octokit.paginate(this.octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
-
-    return branches.map(branch => branch.name)
-}
-
-async function getCommits(owner, repo, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const commits = await this.octokit.paginate(this.octokit.rest.repos.listCommits, { owner, repo, sha: ref || 'main', per_page: 100 })
-        
-    return commits
-}
-
-async function getTags(owner, repo) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const tags = await this.octokit.paginate(this.octokit.rest.repos.listTags, { owner, repo, per_page: 100 })
-
-    return tags.map(tag => tag.name)
-}
-
-async function getFile(owner, repo, path, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const { data } = await this.octokit.request(`GET /repos/${owner}/${repo}/contents/${path}?ref=${ref || 'main'}`)
-
-    return Buffer.from(data.content, 'base64').toString()
-}
-
-async function  getYAML(owner, repo, path, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    return YAML.parse(await this.getFile(owner, repo, path, ref))
-}
-
-// Call the main function to run the action
 main();
