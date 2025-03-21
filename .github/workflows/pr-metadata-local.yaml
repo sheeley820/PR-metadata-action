@@ -4,7 +4,7 @@ on:
   - workflow_dispatch
 
 jobs:
-  annotate-pr:
+  annotate-pr-local:
     runs-on: ubuntu-latest
     name: Annotates pull request with metadata
     steps:

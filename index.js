@@ -30,25 +30,74 @@ const main = async () => {
     // Get the list of tags sorted by date
     // const branches = await octokit.paginate(octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
     // console.log("branches", branches);
-    let prCommitShas = [];
-    let tagsForPullRequest = [];
+    let prCommits = [];
+    let tagsForRepo = [];
+    let tagTable = "";
 
     try {
-        const { data: tags } = await octokit.rest.repos.listTags({ owner, repo });
+        const { data: repoTags } = await octokit.rest.repos.listTags({ owner, repo });
         const { data: commits} = await octokit.rest.pulls.listCommits({ owner, repo, pull_number: pullRequestNumber });
-        console.log("tags", tags);
-        console.log("commits", commits);
+        console.log("repoTags", repoTags);
+        // console.log("commits", commits);
 
-        prCommitShas = commits?.map((commit) => commit.sha);
-        tagsForPullRequest = tags.filter((tag) =>
-            prCommitShas.includes(tag.commit.sha)
-        );
+        const tagsWithDates = await Promise.all(repoTags.map(async (tag) => {
+            const commitData = await octokit.request(`GET /repos/{owner}/{repo}/commits/{commit_sha}`, {
+                owner,
+                repo,
+                commit_sha: tag.commit.sha
+            });
+
+            return {
+                name: tag.name,
+                sha: tag.commit.sha,
+                date: commitData.data.commit.author.date
+            };
+        }));
+        tagsWithDates.sort((a, b) => new Date(b.date) - new Date(a.date));
+        tagsForRepo = tagsWithDates.map((tag) => {
+            const tagCommit = commits.find((commit) => commit.sha === tag.sha);
+            return {
+                ...tag,
+                isInPullRequest: !!tagCommit,
+                date: tag.date
+            };
+        });
+        tagTable = tagsForRepo.reduce((acc, tag, ind) => {
+            if (tag.isInPullRequest) {
+                return acc + `| (new) **${tag.name}** | **${tag.date}** |\n`;
+            }
+            return acc + `| ${tag.name} | ${tag.commit.author.date} |\n`;
+        }, "| Release Tag | Date Tagged |\n|-----|---------------|\n");
     } catch (e) {
         console.error('Error fetching tags for pull request:', e.message);
         throw e;
     }
 
-    console.log('Tags associated with the pull request:', tagsForPullRequest);
+    console.log('Tags associated with the repo:', tagTable);
+
+    async function leaveComment(owner, repo, pullNumber, commentBody) {
+        try {
+            // Add a comment to the pull request
+            const response = await octokit.rest.issues.createComment({
+                owner: owner,          // Repository owner username or organization name
+                repo: repo,            // Repository name
+                issue_number: pullNumber, // Pull request number (treated as issue number)
+                body: commentBody      // The comment to leave on the pull request
+            });
+
+            console.log("Comment created: ", response.data.html_url);
+        } catch (error) {
+            console.error("Error creating comment: ", error);
+        }
+    }
+
+    // Example usage:
+    await leaveComment(
+        owner,             // Repository owner
+        repo,         // Repository name
+        pullRequestNumber,                    // Pull request number
+        tagTable
+    );
 }
 
 main();
