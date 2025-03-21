@@ -6,6 +6,15 @@ const main = async () => {
     const repo = core.getInput('repo', { required: true });
     const pr_number = core.getInput('pr_number', { required: true });
     const token = core.getInput('token', { required: true });
+    const ref = core.getInput('ref', { required: true });
+
+    const pullRequestNumber = parseInt(pr_number, 10);
+
+    console.log("owner", owner);
+    console.log("repo", repo);
+    console.log("pr_number", pr_number);
+    console.log("token", token);
+    console.log("ref", ref);
 
     /**
      * Now we need to create an instance of Octokit which will use to call
@@ -15,76 +24,80 @@ const main = async () => {
      * You can find all the information about how to use Octokit here:
      * https://octokit.github.io/rest.js/v18
      **/
+    // console.log("octokit", octokit);
+
     const octokit = new github.getOctokit(token);
     // Get the list of tags sorted by date
-    
-    const { data: tags } = await octokit.repos.listTags({ owner, repo });
-    console.log("data", data);
-    let commits = [];
-    let currentTag;
-    let previousTag;
+    // const branches = await octokit.paginate(octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
+    // console.log("branches", branches);
+    let prCommits = [];
+    let tagsForRepo = [];
+    let tagTable = "";
 
-    if (tags.length < 2) {
-        console.log("Not enough tags to compare.");
-        commits = this.getCommits(owner, repo, ref);
-        currentTag = tags[0].name;
-        previousTag = commits[0].name;
-    } else {
-        currentTag = tags[0].name;
-        previousTag = tags[1].name;
+    try {
+        const { data: repoTags } = await octokit.rest.repos.listTags({ owner, repo });
+        const { data: commits} = await octokit.rest.pulls.listCommits({ owner, repo, pull_number: pullRequestNumber });
+        console.log("repoTags", repoTags);
+        // console.log("commits", commits);
+
+        const tagsWithDates = await Promise.all(repoTags.map(async (tag) => {
+            const commitData = await octokit.request(`GET /repos/{owner}/{repo}/commits/{commit_sha}`, {
+                owner,
+                repo,
+                commit_sha: tag.commit.sha
+            });
+
+            return {
+                name: tag.name,
+                sha: tag.commit.sha,
+                date: commitData.data.commit.author.date
+            };
+        }));
+        tagsWithDates.sort((a, b) => new Date(b.date) - new Date(a.date));
+        tagsForRepo = tagsWithDates.map((tag) => {
+            const tagCommit = commits.find((commit) => commit.sha === tag.sha);
+            return {
+                ...tag,
+                isInPullRequest: !!tagCommit,
+                date: tag.date
+            };
+        });
+        tagTable = tagsForRepo.reduce((acc, tag, ind) => {
+            if (tag.isInPullRequest) {
+                return acc + `| (new) **${tag.name}** | **${tag.date}** |\n`;
+            }
+            return acc + `| ${tag.name} | ${tag.commit.author.date} |\n`;
+        }, "| Release Tag | Date Tagged |\n|-----|---------------|\n");
+    } catch (e) {
+        console.error('Error fetching tags for pull request:', e.message);
+        throw e;
     }
 
-    console.log(`Comparing commits between ${previousTag} and ${currentTag}`);
+    console.log('Tags associated with the repo:', tagTable);
 
-    // Get the commits between the two tags
-    const { data: comparison } = await octokit.repos.compareCommits({
-        owner,
-        repo,
-        base: previousTag,
-        head: currentTag
-    });
-    console.log("commits", commits);
+    async function leaveComment(owner, repo, pullNumber, commentBody) {
+        try {
+            // Add a comment to the pull request
+            const response = await octokit.rest.issues.createComment({
+                owner: owner,          // Repository owner username or organization name
+                repo: repo,            // Repository name
+                issue_number: pullNumber, // Pull request number (treated as issue number)
+                body: commentBody      // The comment to leave on the pull request
+            });
 
-    console.log("Commits:", comparison.commits.map(commit => commit.commit.message));
+            console.log("Comment created: ", response.data.html_url);
+        } catch (error) {
+            console.error("Error creating comment: ", error);
+        }
+    }
+
+    // Example usage:
+    await leaveComment(
+        owner,             // Repository owner
+        repo,         // Repository name
+        pullRequestNumber,                    // Pull request number
+        tagTable
+    );
 }
 
-async function getBranches(owner, repo) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const branches = await this.octokit.paginate(this.octokit.rest.repos.listBranches, { owner, repo, per_page: 100 })
-
-    return branches.map(branch => branch.name)
-}
-
-async function getCommits(owner, repo, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const commits = await this.octokit.paginate(this.octokit.rest.repos.listCommits, { owner, repo, sha: ref || 'main', per_page: 100 })
-        
-    return commits
-}
-
-async function getTags(owner, repo) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const tags = await this.octokit.paginate(this.octokit.rest.repos.listTags, { owner, repo, per_page: 100 })
-
-    return tags.map(tag => tag.name)
-}
-
-async function getFile(owner, repo, path, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    const { data } = await this.octokit.request(`GET /repos/${owner}/${repo}/contents/${path}?ref=${ref || 'main'}`)
-
-    return Buffer.from(data.content, 'base64').toString()
-}
-
-async function  getYAML(owner, repo, path, ref) {
-    if (!this.octokit) throw new Error('No API key found')
-
-    return YAML.parse(await this.getFile(owner, repo, path, ref))
-}
-
-// Call the main function to run the action
 main();
